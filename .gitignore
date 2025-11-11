@@ -1,0 +1,7 @@
+# Project-specific ignores
+__pycache__/
+*.py[cod]
+*.ipynb_checkpoints/
+
+# Data cache
+data/raw/
