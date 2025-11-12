@@ -350,60 +350,57 @@ def add_share_location_edges(edges: List[EdgeRecord]) -> None:
         )
 
 
-# ---------- metadata enrichment (NOTE: no role/category nodes/edges) ----------
-def add_weapon_metadata_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> None:
-    """
-    Store weapon category on the weapon node (extra['weapon_category']).
-    Keep edges for requires/scales_with attributes.
-    """
+def add_weapon_metadata(nodes: List[NodeRecord]) -> None:
+    """Embed weapon-specific metadata directly on the weapon node."""
+
+    def _clean_requirements(raw: List[dict] | None) -> List[dict]:
+        cleaned: List[dict] = []
+        for entry in raw or []:
+            name = (entry.get("name") or "").strip()
+            if not name:
+                continue
+            cleaned.append(
+                {
+                    "name": name,
+                    "amount": entry.get("amount"),
+                }
+            )
+        return cleaned
+
+    def _clean_scales(raw: List[dict] | None) -> List[dict]:
+        cleaned: List[dict] = []
+        for entry in raw or []:
+            name = (entry.get("name") or "").strip()
+            if not name:
+                continue
+            scaling = (entry.get("scaling") or "").strip()
+            cleaned.append({"name": name, "scaling": scaling})
+        return cleaned
+
     node_index: Dict[str, NodeRecord] = {node.node_id: node for node in nodes}
 
     weapon_payload = read_endpoint("weapons")
     for row in weapon_payload:
         weapon_id = row.get("id")
-        if not weapon_id or weapon_id not in node_index:
+        if not weapon_id:
+            continue
+        record = node_index.get(weapon_id)
+        if not record:
             continue
 
-        # Store category as a node attribute instead of creating a category node/edge
+        extra = record.extra
+
         category = (row.get("category") or "").strip()
         if category:
-            node_index[weapon_id].extra["weapon_category"] = category
+            extra["weapon_category"] = category
 
-        for requirement in row.get("requiredAttributes") or []:
-            attr_name = requirement.get("name")
-            if not attr_name:
-                continue
-            attr_node = ensure_attribute_node(nodes, node_index, attr_name)
-            amount = requirement.get("amount")
-            metadata = {"amount": amount} if amount is not None else None
-            weight = float(amount) if isinstance(amount, (int, float)) else None
-            edges.append(
-                EdgeRecord(
-                    source=weapon_id,
-                    target=attr_node.node_id,
-                    edge_type="weapon_requires_attribute",
-                    relationship="requires",
-                    weight=weight,
-                    metadata=metadata,
-                )
-            )
+        req_clean = _clean_requirements(row.get("requiredAttributes"))
+        if req_clean:
+            extra["weapon_required_attributes"] = req_clean
 
-        for scale in row.get("scalesWith") or []:
-            attr_name = scale.get("name")
-            if not attr_name:
-                continue
-            attr_node = ensure_attribute_node(nodes, node_index, attr_name)
-            scaling = scale.get("scaling")
-            metadata = {"scaling": scaling} if scaling else None
-            edges.append(
-                EdgeRecord(
-                    source=weapon_id,
-                    target=attr_node.node_id,
-                    edge_type="weapon_scales_with",
-                    relationship="scales_with",
-                    metadata=metadata,
-                )
-            )
+        scales_clean = _clean_scales(row.get("scalesWith"))
+        if scales_clean:
+            extra["weapon_scales_with"] = scales_clean
 
 
 def add_npc_role_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> None:
@@ -485,8 +482,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     nodes = gather_nodes()
     edges = build_edges(nodes) if not args.no_edges else []
     if not args.no_edges:
-        add_weapon_metadata_edges(nodes, edges)     # now adds attributes only (plus attr edges)
-        add_npc_role_edges(nodes, edges)            # now adds attributes only
+        add_weapon_metadata(nodes)
+        add_npc_role_edges(nodes, edges)
         add_share_location_edges(edges)
         add_related_item_edges(nodes, edges)
         add_location_mentioned_edges(nodes, edges)
