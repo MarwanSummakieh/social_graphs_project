@@ -14,7 +14,7 @@ import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Sequence
+from typing import List, Sequence
 
 import pandas as pd
 
@@ -27,6 +27,10 @@ NODE_CONFIG = {
     "creatures": "creature",
     "locations": "location",
     "items": "item",
+    "armors": "armor",
+    "shields": "shield",
+    "talismans": "talisman",
+    "incantations": "incantation",
     "weapons": "weapon",
 }
 
@@ -41,21 +45,7 @@ DROP_EDGES = {
     "creatures": "creature_drops",
 }
 
-DROP_TARGET_TYPES = {"item", "weapon"}
-
-DERIVED_ENDPOINT = "derived"
-
-ATTRIBUTE_LABELS = {
-    "str": "Strength",
-    "dex": "Dexterity",
-    "int": "Intelligence",
-    "fai": "Faith",
-    "arc": "Arcane",
-    "end": "Endurance",
-    "vit": "Vitality",
-    "vig": "Vigor",
-    "mind": "Mind",
-}
+DROP_TARGET_TYPES = {"item", "weapon", "armor", "shield", "talisman", "incantation"}
 
 
 @dataclass(frozen=True)
@@ -108,50 +98,6 @@ def explode_locations(raw_value: str | None) -> List[str]:
         parts = new_parts
     cleaned = [p.strip() for p in parts if p.strip() and p.strip().lower() not in {"unknown", "none"}]
     return cleaned
-
-
-def ensure_node_record(
-    nodes: List[NodeRecord],
-    node_index: Dict[str, NodeRecord],
-    node_id: str,
-    *,
-    node_type: str,
-    name: str,
-    description: str | None = None,
-    extra: dict | None = None,
-) -> NodeRecord:
-    if node_id in node_index:
-        return node_index[node_id]
-    record = NodeRecord(
-        node_id=node_id,
-        node_type=node_type,
-        name=name,
-        description=description,
-        raw_endpoint=DERIVED_ENDPOINT,
-        extra=extra or {},
-    )
-    nodes.append(record)
-    node_index[node_id] = record
-    return record
-
-
-def ensure_attribute_node(
-    nodes: List[NodeRecord], node_index: Dict[str, NodeRecord], code: str
-) -> NodeRecord:
-    label = ATTRIBUTE_LABELS.get(code.casefold(), code)
-    node_id = f"attribute:{code.casefold()}"
-    description = f"Character attribute {label}"
-    return ensure_node_record(
-        nodes,
-        node_index,
-        node_id,
-        node_type="attribute",
-        name=label,
-        description=description,
-        extra={"code": code.upper()},
-    )
-
-
 def gather_nodes() -> List[NodeRecord]:
     nodes: List[NodeRecord] = []
     for endpoint, node_type in NODE_CONFIG.items():
@@ -222,109 +168,8 @@ def build_edges(nodes: List[NodeRecord]) -> List[EdgeRecord]:
                         relationship="drops",
                     )
                 )
+
     return edges
-
-
-def add_weapon_metadata_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> None:
-    node_index: Dict[str, NodeRecord] = {node.node_id: node for node in nodes}
-
-    weapon_payload = read_endpoint("weapons")
-    for row in weapon_payload:
-        weapon_id = row.get("id")
-        if not weapon_id or weapon_id not in node_index:
-            continue
-
-        category = (row.get("category") or "").strip()
-        if category:
-            category_id = f"weapon_category:{category.casefold()}"
-            category_node = ensure_node_record(
-                nodes,
-                node_index,
-                category_id,
-                node_type="weapon_category",
-                name=category,
-                description=f"Weapon category {category}",
-                extra={"category": category},
-            )
-            edges.append(
-                EdgeRecord(
-                    source=weapon_id,
-                    target=category_node.node_id,
-                    edge_type="weapon_category",
-                    relationship="belongs_to",
-                )
-            )
-
-        for requirement in row.get("requiredAttributes") or []:
-            attr_name = requirement.get("name")
-            if not attr_name:
-                continue
-            attr_node = ensure_attribute_node(nodes, node_index, attr_name)
-            amount = requirement.get("amount")
-            metadata = {"amount": amount} if amount is not None else None
-            weight = float(amount) if isinstance(amount, (int, float)) else None
-            edges.append(
-                EdgeRecord(
-                    source=weapon_id,
-                    target=attr_node.node_id,
-                    edge_type="weapon_requires_attribute",
-                    relationship="requires",
-                    weight=weight,
-                    metadata=metadata,
-                )
-            )
-
-        for scale in row.get("scalesWith") or []:
-            attr_name = scale.get("name")
-            if not attr_name:
-                continue
-            attr_node = ensure_attribute_node(nodes, node_index, attr_name)
-            scaling = scale.get("scaling")
-            metadata = {"scaling": scaling} if scaling else None
-            edges.append(
-                EdgeRecord(
-                    source=weapon_id,
-                    target=attr_node.node_id,
-                    edge_type="weapon_scales_with",
-                    relationship="scales_with",
-                    metadata=metadata,
-                )
-            )
-
-
-def add_npc_role_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> None:
-    node_index: Dict[str, NodeRecord] = {node.node_id: node for node in nodes}
-
-    npc_payload = read_endpoint("npcs")
-    for row in npc_payload:
-        npc_id = row.get("id")
-        if not npc_id or npc_id not in node_index:
-            continue
-        role_value = row.get("role")
-        if not role_value:
-            continue
-        role_clean = role_value.strip()
-        if not role_clean:
-            continue
-        role_id = f"npc_role:{role_clean.casefold()}"
-        role_node = ensure_node_record(
-            nodes,
-            node_index,
-            role_id,
-            node_type="npc_role",
-            name=role_clean,
-            description=f"NPC role: {role_clean}",
-        )
-        edges.append(
-            EdgeRecord(
-                source=npc_id,
-                target=role_node.node_id,
-                edge_type="npc_has_role",
-                relationship="has_role",
-            )
-        )
-
-
 def to_dataframe(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> tuple[pd.DataFrame, pd.DataFrame]:
     node_rows = [
         {
@@ -368,9 +213,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     nodes = gather_nodes()
     edges = build_edges(nodes) if not args.no_edges else []
-    if not args.no_edges:
-        add_weapon_metadata_edges(nodes, edges)
-        add_npc_role_edges(nodes, edges)
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 

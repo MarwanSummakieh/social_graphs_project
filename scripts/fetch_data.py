@@ -25,6 +25,10 @@ DEFAULT_ENDPOINTS: List[str] = [
     "items",
     "locations",
     "npcs",
+    "armors",
+    "shields",
+    "talismans",
+    "incantations",
     "weapons",
 ]
 CACHE_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
