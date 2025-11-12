@@ -304,6 +304,54 @@ def _name_variants(base: str) -> Set[str]:
         v.add(f" {form} ")
     return v
 
+def add_location_mentioned_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> None:
+    """
+    For each item, if its description mentions a location name (case-insensitive,
+    with simple singular/plural variants), add:
+        item --[location_mentioned]--> location
+
+    Avoids self/dup edges and stores the matched variant in metadata.
+    """
+    # collect nodes
+    item_nodes = [n for n in nodes if n.node_type == "item"]
+    loc_nodes  = [n for n in nodes if n.node_type == "location"]
+
+    # build normalized variant index for each location
+    variants_by_loc_id: Dict[str, Set[str]] = {}
+    for loc in loc_nodes:
+        # normalize the canonical name (lowercase, strip punctuation)
+        canon = _normalize_text(loc.name).strip()
+        canon = canon.strip()
+        canon_sing = _singularize_last_token(canon)
+        # OPTIONAL: skip very short one-word names that cause noise
+        # if len(canon_sing.split()) < 2: 
+        #     continue
+        variants_by_loc_id[loc.node_id] = _name_variants(canon_sing)
+
+    # scan item descriptions for location mentions
+    seen: Set[Tuple[str, str]] = set()
+    for it in item_nodes:
+        desc_norm = _normalize_text(it.description or "")
+        if len(desc_norm.strip()) == 0:
+            continue
+
+        for loc in loc_nodes:
+            for variant in variants_by_loc_id.get(loc.node_id, ()):
+                if variant in desc_norm:
+                    pair = (it.node_id, loc.node_id)
+                    if pair not in seen:
+                        edges.append(
+                            EdgeRecord(
+                                source=it.node_id,
+                                target=loc.node_id,
+                                edge_type="location_mentioned",
+                                relationship="location_mentioned",
+                                metadata={"matched_variant": variant.strip()}
+                            )
+                        )
+                        seen.add(pair)
+                    break  # don't emit multiple edges for multiple variants of same location
+
 def add_related_item_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> None:
     """
     For each item A, if A.description mentions the name of item B (case-insensitive,
@@ -551,6 +599,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         add_npc_role_edges(nodes, edges)
         add_share_location_edges(edges)
         add_related_item_edges(nodes, edges)
+        add_location_mentioned_edges(nodes, edges) 
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
