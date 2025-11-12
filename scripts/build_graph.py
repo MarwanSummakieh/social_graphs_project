@@ -14,10 +14,9 @@ import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple, Set, DefaultDict
+from typing import Dict, List, Sequence, Tuple, Set
 from itertools import combinations
 import re
-from collections import defaultdict
 import pandas as pd
 
 RAW_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
@@ -108,7 +107,11 @@ def explode_locations(raw_value: str | None) -> List[str]:
         for part in parts:
             new_parts.extend(part.split(sep))
         parts = new_parts
-    cleaned = [p.strip() for p in parts if p.strip() and p.strip().lower() not in {"unknown", "none"}]
+    cleaned = [
+        p.strip()
+        for p in parts
+        if p.strip() and p.strip().lower() not in {"unknown", "none"}
+    ]
     return cleaned
 
 
@@ -169,7 +172,11 @@ def gather_nodes() -> List[NodeRecord]:
                     name=name,
                     description=description,
                     raw_endpoint=endpoint,
-                    extra={k: v for k, v in row.items() if k not in {"id", "name", "description", "effect"}},
+                    extra={
+                        k: v
+                        for k, v in row.items()
+                        if k not in {"id", "name", "description", "effect"}
+                    },
                 )
             )
     return nodes
@@ -226,29 +233,18 @@ def build_edges(nodes: List[NodeRecord]) -> List[EdgeRecord]:
                 )
     return edges
 
+
+# ---------- text normalization helpers (for matching inside descriptions) ----------
 def _normalize_text(s: str | None) -> str:
-    """
-    Normalize text for matching: lowercase, strip punctuation except spaces,
-    collapse whitespace. Returns a string with single leading/trailing spaces
-    so we can safely do ' in ' containment checks with word boundaries.
-    """
     if not s:
         return " "
     s = s.lower()
-    # keep letters/digits/spaces, turn other chars into spaces
     s = re.sub(r"[^a-z0-9\s]", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     return f" {s} "
 
+
 def _singularize_last_token(phrase: str) -> str:
-    """
-    Naive singularizer for the LAST token of a multi-word phrase.
-    Handles common English plural rules enough for item names:
-      - 'ies' -> 'y'  (e.g., 'bodies' -> 'body')
-      - 'es' for sibilants -> drop 'es' (e.g., 'ashes' -> 'ash')
-      - trailing 's' -> drop 's'
-    Falls back to the original if no rule applies.
-    """
     tokens = phrase.split()
     if not tokens:
         return phrase
@@ -264,13 +260,8 @@ def _singularize_last_token(phrase: str) -> str:
     tokens[-1] = w2
     return " ".join(tokens)
 
+
 def _pluralize_last_token(phrase: str) -> str:
-    """
-    Simple pluralizer for the LAST token of a phrase to generate a variant:
-      - 'y' -> 'ies'
-      - sibilants -> + 'es'
-      - else -> + 's'
-    """
     tokens = phrase.split()
     if not tokens:
         return phrase
@@ -284,16 +275,8 @@ def _pluralize_last_token(phrase: str) -> str:
     tokens[-1] = w2
     return " ".join(tokens)
 
+
 def _name_variants(base: str) -> Set[str]:
-    """
-    Given a normalized item name (lowercase, no punctuation, single spaces),
-    return a set of variants we’ll search for in descriptions:
-      - base (singular form)
-      - plural of base
-      - singularized form (in case the canonical name is plural in data)
-    All variants are returned padded with leading/trailing spaces for
-    safe ' in ' containment checks.
-    """
     v: Set[str] = set()
     base = base.strip()
     if not base:
@@ -304,31 +287,19 @@ def _name_variants(base: str) -> Set[str]:
         v.add(f" {form} ")
     return v
 
+
+# ---------- derived edges: items mention locations ----------
 def add_location_mentioned_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> None:
-    """
-    For each item, if its description mentions a location name (case-insensitive,
-    with simple singular/plural variants), add:
-        item --[location_mentioned]--> location
-
-    Avoids self/dup edges and stores the matched variant in metadata.
-    """
-    # collect nodes
     item_nodes = [n for n in nodes if n.node_type == "item"]
-    loc_nodes  = [n for n in nodes if n.node_type == "location"]
+    loc_nodes = [n for n in nodes if n.node_type == "location"]
 
-    # build normalized variant index for each location
     variants_by_loc_id: Dict[str, Set[str]] = {}
     for loc in loc_nodes:
-        # normalize the canonical name (lowercase, strip punctuation)
         canon = _normalize_text(loc.name).strip()
         canon = canon.strip()
         canon_sing = _singularize_last_token(canon)
-        # OPTIONAL: skip very short one-word names that cause noise
-        # if len(canon_sing.split()) < 2: 
-        #     continue
         variants_by_loc_id[loc.node_id] = _name_variants(canon_sing)
 
-    # scan item descriptions for location mentions
     seen: Set[Tuple[str, str]] = set()
     for it in item_nodes:
         desc_norm = _normalize_text(it.description or "")
@@ -346,36 +317,25 @@ def add_location_mentioned_edges(nodes: List[NodeRecord], edges: List[EdgeRecord
                                 target=loc.node_id,
                                 edge_type="location_mentioned",
                                 relationship="location_mentioned",
-                                metadata={"matched_variant": variant.strip()}
+                                metadata={"matched_variant": variant.strip()},
                             )
                         )
                         seen.add(pair)
-                    break  # don't emit multiple edges for multiple variants of same location
+                    break
 
+
+# ---------- derived edges: items mention other items ----------
 def add_related_item_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> None:
-    """
-    For each item A, if A.description mentions the name of item B (case-insensitive,
-    simple plural/singular normalization), add a directed edge:
-        A --[related_item]--> B
-    Avoid self-edges, and only add one edge per (A,B) even if multiple mentions.
-    """
-    # 1) Collect all item nodes and build normalized-name variant index
     item_nodes = [n for n in nodes if n.node_type == "item"]
-    # Map normalized singular base -> node_id (assume uniqueness of canonical names)
-    id_by_canonical: Dict[str, str] = {}
+
     variants_by_id: Dict[str, Set[str]] = {}
-    
     for node in item_nodes:
         canon = _normalize_text(node.name).strip()
-        # remove outer spaces introduced by _normalize_text()
         canon = canon.strip()
-        # force singular canonical key for indexing
         canon_sing = _singularize_last_token(canon)
-        id_by_canonical[canon_sing] = node.node_id
         variants_by_id[node.node_id] = _name_variants(canon_sing)
 
-    # 2) For each item, scan its normalized description and look for OTHER item variants
-    seen: Set[Tuple[str, str]] = set()  # (source_id, target_id)
+    seen: Set[Tuple[str, str]] = set()
     for src in item_nodes:
         desc_norm = _normalize_text(src.description or "")
         if len(desc_norm.strip()) == 0:
@@ -385,7 +345,6 @@ def add_related_item_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> 
             if tgt.node_id == src.node_id:
                 continue
             for v in variants_by_id[tgt.node_id]:
-                # simple, fast whole-phrase containment check with space padding
                 if v in desc_norm:
                     pair = (src.node_id, tgt.node_id)
                     if pair not in seen:
@@ -395,22 +354,17 @@ def add_related_item_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> 
                                 target=tgt.node_id,
                                 edge_type="related_item",
                                 relationship="related_item",
-                                # optional: weight = 1.0; you could count occurrences if desired
-                                metadata={"matched_variant": v.strip()}
+                                metadata={"matched_variant": v.strip()},
                             )
                         )
                         seen.add(pair)
-                    break  # don’t add duplicates for multiple variants of same target
+                    break
 
+
+# ---------- derived edges: share_location between bosses/creatures/npcs ----------
 def add_share_location_edges(edges: List[EdgeRecord]) -> None:
-    """
-    Create share_location edges between any pair of entities (bosses, creatures, npcs)
-    that appear in the same location. Edge weight is the number of shared locations.
-    """
-    # endpoints that carry 'location'
     endpoints = ["bosses", "creatures", "npcs"]
 
-    # Build buckets: normalized_location -> set of entity ids that have this location
     buckets: Dict[str, set] = {}
     for endpoint in endpoints:
         payload = read_endpoint(endpoint)
@@ -424,20 +378,18 @@ def add_share_location_edges(edges: List[EdgeRecord]) -> None:
                     continue
                 buckets.setdefault(key, set()).add(src)
 
-    # Count co-location pairs and collect which locations they share
-    pair_weight: Dict[tuple, int] = {}
-    pair_locs: Dict[tuple, set] = {}
+    pair_weight: Dict[Tuple[str, str], int] = {}
+    pair_locs: Dict[Tuple[str, str], Set[str]] = {}
 
     for loc_key, ids in buckets.items():
-        ids_list = sorted(ids)  # stable ordering for canonical pair keys
+        ids_list = sorted(ids)
         if len(ids_list) < 2:
             continue
         for a, b in combinations(ids_list, 2):
-            pair = (a, b)  # canonical (sorted) pair
+            pair = (a, b)
             pair_weight[pair] = pair_weight.get(pair, 0) + 1
             pair_locs.setdefault(pair, set()).add(loc_key)
 
-    # Materialize edges once per pair, with weight and metadata
     for (a, b), w in pair_weight.items():
         edges.append(
             EdgeRecord(
@@ -451,7 +403,12 @@ def add_share_location_edges(edges: List[EdgeRecord]) -> None:
         )
 
 
+# ---------- metadata enrichment (NOTE: no role/category nodes/edges) ----------
 def add_weapon_metadata_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> None:
+    """
+    Store weapon category on the weapon node (extra['weapon_category']).
+    Keep edges for requires/scales_with attributes.
+    """
     node_index: Dict[str, NodeRecord] = {node.node_id: node for node in nodes}
 
     weapon_payload = read_endpoint("weapons")
@@ -460,26 +417,10 @@ def add_weapon_metadata_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) 
         if not weapon_id or weapon_id not in node_index:
             continue
 
+        # Store category as a node attribute instead of creating a category node/edge
         category = (row.get("category") or "").strip()
         if category:
-            category_id = f"weapon_category:{category.casefold()}"
-            category_node = ensure_node_record(
-                nodes,
-                node_index,
-                category_id,
-                node_type="weapon_category",
-                name=category,
-                description=f"Weapon category {category}",
-                extra={"category": category},
-            )
-            edges.append(
-                EdgeRecord(
-                    source=weapon_id,
-                    target=category_node.node_id,
-                    edge_type="weapon_category",
-                    relationship="belongs_to",
-                )
-            )
+            node_index[weapon_id].extra["weapon_category"] = category
 
         for requirement in row.get("requiredAttributes") or []:
             attr_name = requirement.get("name")
@@ -519,39 +460,41 @@ def add_weapon_metadata_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) 
 
 
 def add_npc_role_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> None:
+    """
+    Store NPC roles on the NPC node (extra['npc_roles'] = list[str]).
+    No role nodes or npc_has_role edges are created.
+    """
     node_index: Dict[str, NodeRecord] = {node.node_id: node for node in nodes}
+
+    def _split_roles(raw: str) -> List[str]:
+        if not isinstance(raw, str):
+            return []
+        parts = [raw]
+        for sep in [",", " /", "/", " and ", " & "]:
+            nxt: List[str] = []
+            for p in parts:
+                nxt.extend(p.split(sep))
+            parts = nxt
+        return [p.strip() for p in parts if p and p.strip()]
 
     npc_payload = read_endpoint("npcs")
     for row in npc_payload:
         npc_id = row.get("id")
         if not npc_id or npc_id not in node_index:
             continue
-        role_value = row.get("role")
-        if not role_value:
+        roles_raw = row.get("role")
+        roles = _split_roles(roles_raw) if roles_raw else []
+        if not roles:
             continue
-        role_clean = role_value.strip()
-        if not role_clean:
-            continue
-        role_id = f"npc_role:{role_clean.casefold()}"
-        role_node = ensure_node_record(
-            nodes,
-            node_index,
-            role_id,
-            node_type="npc_role",
-            name=role_clean,
-            description=f"NPC role: {role_clean}",
-        )
-        edges.append(
-            EdgeRecord(
-                source=npc_id,
-                target=role_node.node_id,
-                edge_type="npc_has_role",
-                relationship="has_role",
-            )
-        )
+        extra = node_index[npc_id].extra
+        existing = set(extra.get("npc_roles", []))
+        extra["npc_roles"] = sorted(existing.union(roles))
 
 
-def to_dataframe(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> tuple[pd.DataFrame, pd.DataFrame]:
+# ---------- dataframe serialization ----------
+def to_dataframe(
+    nodes: List[NodeRecord], edges: List[EdgeRecord]
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     node_rows = [
         {
             "node_id": node.node_id,
@@ -595,11 +538,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     nodes = gather_nodes()
     edges = build_edges(nodes) if not args.no_edges else []
     if not args.no_edges:
-        add_weapon_metadata_edges(nodes, edges)
-        add_npc_role_edges(nodes, edges)
+        add_weapon_metadata_edges(nodes, edges)     # now adds attributes only (plus attr edges)
+        add_npc_role_edges(nodes, edges)            # now adds attributes only
         add_share_location_edges(edges)
         add_related_item_edges(nodes, edges)
-        add_location_mentioned_edges(nodes, edges) 
+        add_location_mentioned_edges(nodes, edges)
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
