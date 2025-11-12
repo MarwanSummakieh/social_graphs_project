@@ -14,9 +14,10 @@ import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Sequence
+from typing import Dict, List, Sequence, Tuple, Set, DefaultDict
 from itertools import combinations
-
+import re
+from collections import defaultdict
 import pandas as pd
 
 RAW_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
@@ -225,6 +226,134 @@ def build_edges(nodes: List[NodeRecord]) -> List[EdgeRecord]:
                 )
     return edges
 
+def _normalize_text(s: str | None) -> str:
+    """
+    Normalize text for matching: lowercase, strip punctuation except spaces,
+    collapse whitespace. Returns a string with single leading/trailing spaces
+    so we can safely do ' in ' containment checks with word boundaries.
+    """
+    if not s:
+        return " "
+    s = s.lower()
+    # keep letters/digits/spaces, turn other chars into spaces
+    s = re.sub(r"[^a-z0-9\s]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return f" {s} "
+
+def _singularize_last_token(phrase: str) -> str:
+    """
+    Naive singularizer for the LAST token of a multi-word phrase.
+    Handles common English plural rules enough for item names:
+      - 'ies' -> 'y'  (e.g., 'bodies' -> 'body')
+      - 'es' for sibilants -> drop 'es' (e.g., 'ashes' -> 'ash')
+      - trailing 's' -> drop 's'
+    Falls back to the original if no rule applies.
+    """
+    tokens = phrase.split()
+    if not tokens:
+        return phrase
+    w = tokens[-1]
+    if len(w) > 3 and w.endswith("ies"):
+        w2 = w[:-3] + "y"
+    elif len(w) > 2 and re.search(r"(ches|shes|xes|ses|zes)$", w):
+        w2 = w[:-2]
+    elif len(w) > 1 and w.endswith("s"):
+        w2 = w[:-1]
+    else:
+        w2 = w
+    tokens[-1] = w2
+    return " ".join(tokens)
+
+def _pluralize_last_token(phrase: str) -> str:
+    """
+    Simple pluralizer for the LAST token of a phrase to generate a variant:
+      - 'y' -> 'ies'
+      - sibilants -> + 'es'
+      - else -> + 's'
+    """
+    tokens = phrase.split()
+    if not tokens:
+        return phrase
+    w = tokens[-1]
+    if len(w) > 1 and w.endswith("y"):
+        w2 = w[:-1] + "ies"
+    elif re.search(r"(ch|sh|x|s|z)$", w):
+        w2 = w + "es"
+    else:
+        w2 = w + "s"
+    tokens[-1] = w2
+    return " ".join(tokens)
+
+def _name_variants(base: str) -> Set[str]:
+    """
+    Given a normalized item name (lowercase, no punctuation, single spaces),
+    return a set of variants we’ll search for in descriptions:
+      - base (singular form)
+      - plural of base
+      - singularized form (in case the canonical name is plural in data)
+    All variants are returned padded with leading/trailing spaces for
+    safe ' in ' containment checks.
+    """
+    v: Set[str] = set()
+    base = base.strip()
+    if not base:
+        return {" "}
+    sing = _singularize_last_token(base)
+    plur = _pluralize_last_token(sing)
+    for form in {base, sing, plur}:
+        v.add(f" {form} ")
+    return v
+
+def add_related_item_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> None:
+    """
+    For each item A, if A.description mentions the name of item B (case-insensitive,
+    simple plural/singular normalization), add a directed edge:
+        A --[related_item]--> B
+    Avoid self-edges, and only add one edge per (A,B) even if multiple mentions.
+    """
+    # 1) Collect all item nodes and build normalized-name variant index
+    item_nodes = [n for n in nodes if n.node_type == "item"]
+    # Map normalized singular base -> node_id (assume uniqueness of canonical names)
+    id_by_canonical: Dict[str, str] = {}
+    variants_by_id: Dict[str, Set[str]] = {}
+    
+    for node in item_nodes:
+        canon = _normalize_text(node.name).strip()
+        # remove outer spaces introduced by _normalize_text()
+        canon = canon.strip()
+        # force singular canonical key for indexing
+        canon_sing = _singularize_last_token(canon)
+        id_by_canonical[canon_sing] = node.node_id
+        variants_by_id[node.node_id] = _name_variants(canon_sing)
+
+    # 2) For each item, scan its normalized description and look for OTHER item variants
+    seen: Set[Tuple[str, str]] = set()  # (source_id, target_id)
+    for src in item_nodes:
+        desc_norm = _normalize_text(src.description or "")
+        if len(desc_norm.strip()) == 0:
+            continue
+
+        for tgt in item_nodes:
+            if tgt.node_id == src.node_id:
+                continue
+            for v in variants_by_id[tgt.node_id]:
+                # simple, fast whole-phrase containment check with space padding
+                if v in desc_norm:
+                    pair = (src.node_id, tgt.node_id)
+                    if pair not in seen:
+                        edges.append(
+                            EdgeRecord(
+                                source=src.node_id,
+                                target=tgt.node_id,
+                                edge_type="related_item",
+                                relationship="related_item",
+                                # optional: weight = 1.0; you could count occurrences if desired
+                                metadata={"matched_variant": v.strip()}
+                            )
+                        )
+                        seen.add(pair)
+                    break  # don’t add duplicates for multiple variants of same target
+
 def add_share_location_edges(edges: List[EdgeRecord]) -> None:
     """
     Create share_location edges between any pair of entities (bosses, creatures, npcs)
@@ -421,6 +550,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         add_weapon_metadata_edges(nodes, edges)
         add_npc_role_edges(nodes, edges)
         add_share_location_edges(edges)
+        add_related_item_edges(nodes, edges)
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
