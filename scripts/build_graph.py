@@ -15,6 +15,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Sequence
+from itertools import combinations
 
 import pandas as pd
 
@@ -224,6 +225,54 @@ def build_edges(nodes: List[NodeRecord]) -> List[EdgeRecord]:
                 )
     return edges
 
+def add_share_location_edges(edges: List[EdgeRecord]) -> None:
+    """
+    Create share_location edges between any pair of entities (bosses, creatures, npcs)
+    that appear in the same location. Edge weight is the number of shared locations.
+    """
+    # endpoints that carry 'location'
+    endpoints = ["bosses", "creatures", "npcs"]
+
+    # Build buckets: normalized_location -> set of entity ids that have this location
+    buckets: Dict[str, set] = {}
+    for endpoint in endpoints:
+        payload = read_endpoint(endpoint)
+        for row in payload:
+            src = row.get("id")
+            if not src:
+                continue
+            for raw_loc in explode_locations(row.get("location")):
+                key = normalise_name(raw_loc)
+                if not key:
+                    continue
+                buckets.setdefault(key, set()).add(src)
+
+    # Count co-location pairs and collect which locations they share
+    pair_weight: Dict[tuple, int] = {}
+    pair_locs: Dict[tuple, set] = {}
+
+    for loc_key, ids in buckets.items():
+        ids_list = sorted(ids)  # stable ordering for canonical pair keys
+        if len(ids_list) < 2:
+            continue
+        for a, b in combinations(ids_list, 2):
+            pair = (a, b)  # canonical (sorted) pair
+            pair_weight[pair] = pair_weight.get(pair, 0) + 1
+            pair_locs.setdefault(pair, set()).add(loc_key)
+
+    # Materialize edges once per pair, with weight and metadata
+    for (a, b), w in pair_weight.items():
+        edges.append(
+            EdgeRecord(
+                source=a,
+                target=b,
+                edge_type="share_location",
+                relationship="share_location",
+                weight=float(w),
+                metadata={"locations": sorted(pair_locs[(a, b)])},
+            )
+        )
+
 
 def add_weapon_metadata_edges(nodes: List[NodeRecord], edges: List[EdgeRecord]) -> None:
     node_index: Dict[str, NodeRecord] = {node.node_id: node for node in nodes}
@@ -371,6 +420,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.no_edges:
         add_weapon_metadata_edges(nodes, edges)
         add_npc_role_edges(nodes, edges)
+        add_share_location_edges(edges)
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
