@@ -1,33 +1,27 @@
 # Elden Ring Social Graphs
 
-This repository investigates Elden Ring lore by combining graph structure and NLP features harvested from the public Elden Ring fan API.
+**Research focus** – “The Architecture of Fate in Elden Ring.” We study how stat mechanics (Intelligence vs Faith scaling, utility items) dictate the topology of characters, items, and endings.
 
-## Getting Started
+## Notebook-Centric Workflow
 
-1. **Cache the API payloads**
-   ```pwsh
-   python scripts/fetch_data.py
-   ```
-   Cached JSON files are written to `data/raw/` (git-ignored). Use `--refresh` to overwrite existing cache files or `--endpoints` to limit the download scope.
+All reproducible steps live in `notebooks/Marwan's proposal/`:
 
-2. **Build node and edge tables**
-   ```pwsh
-   python scripts/build_graph.py
-   ```
-   The script reads the cached payloads and produces `data/processed/nodes.csv` and `data/processed/edges.csv`, aligning with the network schema discussed in the project brief.
+1. `01_data_collection.ipynb` – Download and cache Elden Ring Fan API payloads (items, weapons, NPCs, locations, bosses, armors, talismans, incantations) with on-notebook provenance.
+2. `02_graph_construction.ipynb` – Transform raw JSON into `data/processed/nodes.csv` and `data/processed/edges.csv`, tagging Int/Faith scaling and bell-bearing fate markers.
+3. `03_network_analysis.ipynb` – Run community detection, assortativity, centrality, and path analyses to evidence the Intelligence/Faith “schism” and “tragic hub” dynamics.
+4. `04_nlp_analysis.ipynb` – Perform TF–IDF vocabulary splits and fate-lexicon scoring to link textual lore with mechanics.
 
-Both scripts expose `--help` flags for additional options.
+Execute the notebooks sequentially (01 → 02 → 03 → 04). Each notebook includes configuration cells so reviewers can refresh caches or tweak parameters without touching standalone scripts.
 
-### Notebook-only workflow
+### Legacy scripts
 
-- Open `notebooks/explainer_notebook.ipynb` and execute all cells to perform data download, cleaning, visualization, modeling, and export steps in a single reproducible document.
-   - Set the `REFRESH_CACHE` flag in the first code cell if you need to re-fetch the API payloads.
-   - The notebook emits `data/processed/node_features.csv`, `data/processed/node_type_report.csv`, and `data/processed/node_type_logreg.joblib` after the final cell runs.
+Historical helpers remain in `scripts/` (`fetch_data.py`, `build_graph.py`, etc.) but are no longer the source of truth. Prefer the notebook pipeline for grading and reproducibility.
 
 ## Data Layout
 
-- `data/raw/`: Cached API responses (`.json`).
-- `data/processed/`: Derived CSV assets; currently `nodes.csv` and `edges.csv`.
-- `data/README.md`: Expanded documentation of the data lifecycle.
+- `data/raw/`: Notebook-managed API caches (JSON) + provenance log.
+- `data/processed/`: Outputs from Notebook 02 (`nodes.csv`, `edges.csv`, derived features).
+- `data/scraped/`: Optional HTML scrape caches created by `scripts/scrape_wiki.py` (still git-ignored).
+- `data/README.md`: Detailed data lifecycle notes.
 
-Refer to `project_guidelines.md` for the broader research goals and deliverable expectations.
+Consult `project_guidelines.md` for deliverable requirements, then follow the notebook series for the “Bipolar World / Tragedy of Utility / Illusion of Choice” study.

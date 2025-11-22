@@ -1,0 +1,37 @@
+Loading data...
+Identifying weapon scaling types...
+Building graph...
+
+--- Network Analysis ---
+Nodes: 110
+Edges: 19
+Num Int Weapons: 45
+Num Fth Weapons: 49
+
+Top Central Int Weapons:
+  Onyx Lord's Greatsword (0.0092)
+  Family Heads (0.0092)
+  Glintstone Staff (0.0092)
+  Digger's Staff (0.0092)
+  Academy Glintstone Staff (0.0092)
+
+Top Central Fth Weapons:
+  Gargoyle's Black Axe (0.0092)
+  Magma Wyrm's Scalesword (0.0092)
+  Black Knife (0.0092)
+  Ordovis's Greatsword (0.0092)
+  Golden Order Greatsword (0.0092)
+
+--- NLP Analysis ---
+
+Top Keywords for Intelligence Weapons:
+staff, glintstone, weapon, magic, sorceries, embedded, said, fashioned, blue, crystal
+
+Top Keywords for Faith Weapons:
+blade, holy, flame, sacred, damage, deals, golden, sword, used, death
+
+Most Distinctive for Intelligence (vs Faith):
+staff, glintstone, magic, sorceries, embedded, weapon, blue, crystal, fashioned, carian
+
+Most Distinctive for Faith (vs Intelligence):
+holy, flame, sacred, golden, seal, faith, erdtree, damage, dragon, incantations

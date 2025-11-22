@@ -1,0 +1,15 @@
+Loading data...
+Finding NPC mentions in item descriptions...
+Identifying Fate Items (Bell Bearings, Remembrances)...
+
+--- Character Fate Analysis ---
+Found 0 NPC-Fate Item connections.
+
+Top Tragic Characters (Linked to Bell Bearings/Remembrances):
+
+--- Player Choice Analysis ---
+
+Potential Player Choice Moments:
+- Irina (Item: Irina's Letter): Keywords ['give']
+- Irina (Item: Irina's Letter): Keywords ['give']
+- Preceptor Seluvis (Item: Seluvis's Potion): Keywords ['seluvis']

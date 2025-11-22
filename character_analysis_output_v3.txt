@@ -1,0 +1,24 @@
+Loading data...
+Finding NPC mentions in item descriptions...
+Identifying Fate Items (Equipment, Remembrances, Death Context)...
+
+--- Character Fate Analysis ---
+Found 16 NPC-Fate Item connections.
+
+Top Tragic/Legacy Characters:
+- Blaidd: Blaidd's Armor (altered), Blaidd's Armor, Blaidd's Gauntlets, Blaidd's Greaves
+- Dung Eater: Seedbed Curse
+- Ensha Of The Royal Remains: Clinging Bone
+- Fia: Fia's Robe, Fia's Hood
+- Goldmask: Goldmask's Rags, Radiant Gold Mask
+- Irina: Irina's Letter, Irina's Letter
+- Millicent: Millicent's Gloves, Millicent's Prosthesis
+- Queen Marika: One-eyed Shield
+- Shabriri: Shabriri's Woe
+
+--- Player Choice Analysis ---
+
+Potential Player Choice Moments:
+- Irina (Item: Irina's Letter): Keywords ['give']
+- Irina (Item: Irina's Letter): Keywords ['give']
+- Preceptor Seluvis (Item: Seluvis's Potion): Keywords ['seluvis']
