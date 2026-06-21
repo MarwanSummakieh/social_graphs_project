@@ -82,13 +82,7 @@ python -m http.server 8000 --directory docs
 
 ## Deploy to GitHub Pages
 
-1. Commit the repo (including `docs/data/graph.json`).
-2. Repo **Settings → Pages → Build and deployment → Source: "Deploy from a
-   branch"**, branch `main`, folder **`/docs`**.
-3. The site publishes at `https://<user>.github.io/<repo>/`.
-
-No build step and no server are required; all interactivity runs client-side
-(graphology + sigma.js + Chart.js, loaded from jsDelivr).
+Check the the analysis on https://marwansummakieh.github.io/social_graphs_project/
 
 ## Data source
 
