@@ -1,6 +1,8 @@
 # The Architecture of Fate — Elden Ring Network & NLP Explorer
 
-### ▶ [**Open the live explorer**](https://marwansummakieh.github.io/social_graphs_project/)
+[![Open the live site](https://img.shields.io/badge/▶_Open_the_live_explorer-GitHub_Pages-c9a86a?style=for-the-badge&logo=github)](https://marwansummakieh.github.io/social_graphs_project/)
+
+**Live site:** https://marwansummakieh.github.io/social_graphs_project/
 
 A network-science + NLP study of the Elden Ring world, with an **interactive web
 frontend** hosted on GitHub Pages. The central thesis: game mechanics —
