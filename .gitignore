@@ -1,8 +1,11 @@
-# Project-specific ignores
+# Python
 __pycache__/
 *.py[cod]
 *.ipynb_checkpoints/
 
-# Data cache
-data/
-data/scraped/
+# Raw/processed API cache produced by the pipeline (re-fetchable from the API).
+# Anchored to the repo root so the committed site snapshot in docs/data/ is NOT ignored.
+/data/
+
+# Local dev preview config
+.claude/launch.json

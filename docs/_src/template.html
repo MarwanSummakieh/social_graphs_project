@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<!-- GENERATED FILE — do not edit docs/index.html by hand.
+     Edit the sources, then run `python -m pipeline`:
+       docs/_src/template.html   (this layout)
+       docs/css/style.css        (styles, inlined below)
+       docs/js/analysis.js js/app.js js/story.js js/dlc.js  (inlined below)
+     Everything is inlined so the page works by double-click, offline, on
+     file://, and on GitHub Pages with no server. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Architecture of Fate · Elden Ring Network Explorer</title>
+  <style>/*__STYLE__*/</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>The Architecture of Fate</h1>
+      <p>A network &amp; NLP study of the Lands Between — read the world's structure,
+         decipher its story from the data, and weigh the motives of the Realm of Shadow.</p>
+    </div>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-view="network">✦ The Network</button>
+    <button class="tab" data-view="story">✦ The Story</button>
+    <button class="tab" data-view="dlc">✦ Realm of Shadow</button>
+  </nav>
+
+  <!-- ============================ NETWORK ============================ -->
+  <div id="view-network" class="view">
+    <main class="layout">
+      <aside class="panel controls">
+        <div class="ctl-block">
+          <label class="ctl-label">Search entity</label>
+          <input type="text" id="search" placeholder="e.g. Rennala, Erdtree Seal…" autocomplete="off" />
+          <div id="search-results" class="search-results"></div>
+        </div>
+        <div class="ctl-block">
+          <label class="ctl-label">Edge types <span class="hint">relations that build the graph</span></label>
+          <div id="edge-types" class="chk-list"></div>
+        </div>
+        <div class="ctl-block">
+          <label class="ctl-label">Node types</label>
+          <div class="presets">
+            <button id="preset-all" class="mini">All</button>
+            <button id="preset-chars" class="mini">Characters</button>
+            <button id="preset-arsenal" class="mini">Arsenal</button>
+          </div>
+          <div id="node-types" class="chk-list scroll"></div>
+        </div>
+        <div class="ctl-block grid2">
+          <div>
+            <label class="ctl-label">Color by</label>
+            <select id="color-by">
+              <option value="faction">Int ↔ Faith faction</option>
+              <option value="community">Community (Louvain)</option>
+              <option value="type">Node type</option>
+              <option value="sentiment">Sentiment</option>
+            </select>
+          </div>
+          <div>
+            <label class="ctl-label">Size by</label>
+            <select id="size-by">
+              <option value="pagerank">PageRank</option>
+              <option value="degree">Degree</option>
+              <option value="betweenness">Betweenness</option>
+              <option value="uniform">Uniform</option>
+            </select>
+          </div>
+        </div>
+        <div class="ctl-block">
+          <label class="ctl-label">Highlight faction</label>
+          <select id="faction-highlight">
+            <option value="all">Show all</option>
+            <option value="Intelligence">Intelligence only</option>
+            <option value="Faith">Faith only</option>
+            <option value="Hybrid">Hybrid only</option>
+            <option value="Neither">Neither only</option>
+          </select>
+        </div>
+        <div class="ctl-block">
+          <label class="ctl-label">Louvain resolution <span id="resolution-val" class="val">1.0</span></label>
+          <input type="range" id="resolution" min="0.3" max="2.0" step="0.1" value="1.0" />
+          <label class="ctl-label">Min degree <span id="min-degree-val" class="val">1</span></label>
+          <input type="range" id="min-degree" min="0" max="10" step="1" value="1" />
+        </div>
+        <button id="reset-btn" class="reset">Reset view</button>
+      </aside>
+
+      <section class="panel stage">
+        <div id="graph"></div>
+        <div id="legend" class="legend"></div>
+        <div id="loading" class="loading">Loading the Lands Between…</div>
+        <aside id="detail" class="detail">
+          <button id="detail-close" class="detail-close" aria-label="Close">×</button>
+          <div class="detail-body"></div>
+        </aside>
+      </section>
+
+      <aside class="panel insights">
+        <div class="stats">
+          <div class="stat"><span id="stat-nodes">—</span><label>nodes shown</label></div>
+          <div class="stat"><span id="stat-edges">—</span><label>edges shown</label></div>
+          <div class="stat"><span id="stat-comms">—</span><label>communities</label></div>
+          <div class="stat"><span id="stat-mod">—</span><label>modularity</label></div>
+        </div>
+        <div class="card">
+          <h2>Faction composition</h2>
+          <canvas id="chart-faction" height="170"></canvas>
+        </div>
+        <div class="card">
+          <h2>Mean sentiment by type</h2>
+          <p class="card-note">VADER polarity of lore text (−1 tragic ⟶ +1 noble)</p>
+          <canvas id="chart-sentiment" height="200"></canvas>
+        </div>
+        <div class="card">
+          <h2>Communities &amp; themes</h2>
+          <p class="card-note">Top TF-IDF keywords, recomputed live per community</p>
+          <div id="community-list" class="community-list"></div>
+        </div>
+        <div class="card">
+          <h2>Top hubs</h2>
+          <table class="hubs"><thead><tr><th>Entity</th><th>Type</th><th>Score</th></tr></thead>
+            <tbody id="hubs-body"></tbody></table>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- ============================= STORY ============================= -->
+  <div id="view-story" class="view hidden">
+    <div class="story-layout">
+      <aside class="panel story-index">
+        <h2 class="story-h">Chapters</h2>
+        <p class="card-note">Stories reconstructed from the game's own item, location &amp; boss
+           text — surfaced by who the world speaks of most.</p>
+        <div id="chapter-list"></div>
+      </aside>
+      <section class="panel story-main" id="story-main">
+        <div class="story-empty">Choose a chapter to let the data tell its tale.</div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ========================= REALM OF SHADOW ====================== -->
+  <div id="view-dlc" class="view hidden">
+    <div class="dlc-layout">
+      <section class="panel stage dlc-stage">
+        <div id="dlc-graph"></div>
+        <div id="dlc-legend" class="legend"></div>
+      </section>
+      <aside class="panel dlc-side">
+        <h2 class="story-h">Realm of Shadow</h2>
+        <p class="card-note" id="dlc-intro"></p>
+        <div id="dlc-detail" class="dlc-detail"></div>
+        <h3 class="dlc-sub">Figures &amp; motives</h3>
+        <div id="dlc-list" class="dlc-list"></div>
+      </aside>
+    </div>
+  </div>
+
+  <script>/*__LIBS__*/</script>
+  <script>/*__DATA__*/</script>
+  <script>/*__ANALYSIS__*/</script>
+  <script>/*__APP__*/</script>
+  <script>/*__STORY__*/</script>
+  <script>/*__DLC__*/</script>
+</body>
+</html>
