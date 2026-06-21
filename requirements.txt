@@ -1,7 +1,6 @@
-beautifulsoup4
-requests
-networkx
-matplotlib
-pandas
-numpy
-scikit-learn
+# Offline pipeline (pipeline/) — turns the Elden Ring API into docs/data/graph.json.
+# The interactive frontend (docs/) needs NO Python: it loads its JS libraries from a CDN.
+requests>=2.31
+networkx>=3.0
+numpy>=1.24
+vaderSentiment>=3.3.2
