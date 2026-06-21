@@ -1,7 +1,9 @@
 # The Architecture of Fate — Elden Ring Network & NLP Explorer
 
+### ▶ [**Open the live explorer**](https://marwansummakieh.github.io/social_graphs_project/)
+
 A network-science + NLP study of the Elden Ring world, with an **interactive web
-frontend** you can host on GitHub Pages. The central thesis: game mechanics —
+frontend** hosted on GitHub Pages. The central thesis: game mechanics —
 especially the **Intelligence ↔ Faith** stat schism — shape the narrative
 topology of items, characters, and places.
 
